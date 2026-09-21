@@ -1,0 +1,13 @@
+[project]
+name = "ai-image-detector"
+version = "0.1.0"
+description = "AI Image Verification System"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "pillow",
+    "transformers",
+    "torch"
+]
