@@ -2,9 +2,9 @@
 name = "ai-image-detector"
 version = "0.1.0"
 description = "AI Image Verification System"
-requires-python = "3.13"
+requires-python = "==3.13.*"
 dependencies = [
-    "fastapi",
+    "fastapi[standard]",
     "uvicorn",
     "python-multipart",
     "pillow",
