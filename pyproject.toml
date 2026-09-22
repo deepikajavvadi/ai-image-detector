@@ -9,5 +9,5 @@ dependencies = [
     "python-multipart",
     "pillow",
     "transformers",
-    "torch"
+    "torch==2.6.0"
 ]
