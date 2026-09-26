@@ -6,7 +6,6 @@ import io
 
 app = FastAPI(title="AI Image Detector")
 
-# Allow Flutter app to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,14 +14,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("Loading AI image detector model...")
+detector = None
 
-detector = pipeline(
-    "image-classification",
-    model="umm-maybe/AI-image-detector"
-)
 
-print("AI image detector model loaded successfully!")
+def get_detector():
+    global detector
+
+    if detector is None:
+        print("Loading AI image detector model...")
+
+        detector = pipeline(
+            "image-classification",
+            model="umm-maybe/AI-image-detector",
+            device=-1
+        )
+
+        print("AI image detector model loaded successfully!")
+
+    return detector
 
 
 @app.get("/")
@@ -35,16 +44,16 @@ def home():
 @app.post("/verify")
 async def verify_image(file: UploadFile = File(...)):
     try:
-        # Read uploaded image
         image_bytes = await file.read()
 
-        # Convert bytes to PIL Image
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        image = Image.open(
+            io.BytesIO(image_bytes)
+        ).convert("RGB")
 
-        # Run AI detection
-        results = detector(image)
+        detector_model = get_detector()
 
-        # Get scores
+        results = detector_model(image)
+
         human_score = 0.0
         artificial_score = 0.0
 
@@ -58,7 +67,6 @@ async def verify_image(file: UploadFile = File(...)):
             elif label == "artificial":
                 artificial_score = score
 
-        # Decide result
         if artificial_score > human_score:
             prediction = "AI Generated"
             confidence = artificial_score
