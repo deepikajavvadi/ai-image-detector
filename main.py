@@ -1,8 +1,12 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
-from transformers import pipeline
 import io
+import os
+import json
+import urllib.request
+import numpy as np
+import onnxruntime as ort
 
 app = FastAPI(title="AI Image Detector")
 
@@ -14,24 +18,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-detector = None
+MODEL_URL = (
+    "https://huggingface.co/onnx-community/"
+    "ai-image-detect-distilled-ONNX/resolve/main/"
+    "onnx/model_int8.onnx"
+)
+
+MODEL_PATH = "/tmp/model_int8.onnx"
+
+session = None
 
 
-def get_detector():
-    global detector
+def get_session():
+    global session
 
-    if detector is None:
-        print("Loading lightweight AI image detector...")
+    if session is None:
+        if not os.path.exists(MODEL_PATH):
+            print("Downloading lightweight AI detector model...")
+            urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
 
-        detector = pipeline(
-            "image-classification",
-            model="onnx-community/ai-image-detect-distilled-ONNX",
-            device=-1
+        print("Loading ONNX model...")
+        session = ort.InferenceSession(
+            MODEL_PATH,
+            providers=["CPUExecutionProvider"]
         )
+        print("ONNX model loaded!")
 
-        print("Lightweight AI image detector loaded!")
+    return session
 
-    return detector
+
+def preprocess_image(image):
+    image = image.resize((224, 224))
+    image = np.array(image).astype(np.float32) / 255.0
+
+    image = (image - 0.5) / 0.5
+
+    image = np.transpose(image, (2, 0, 1))
+    image = np.expand_dims(image, axis=0)
+
+    return image.astype(np.float32)
 
 
 @app.get("/")
@@ -50,22 +75,26 @@ async def verify_image(file: UploadFile = File(...)):
             io.BytesIO(image_bytes)
         ).convert("RGB")
 
-        detector_model = get_detector()
+        model = get_session()
 
-        results = detector_model(image)
+        input_data = preprocess_image(image)
 
-        real_score = 0.0
-        fake_score = 0.0
+        input_name = model.get_inputs()[0].name
 
-        for result in results:
-            label = result["label"].lower()
-            score = float(result["score"])
+        outputs = model.run(
+            None,
+            {
+                input_name: input_data
+            }
+        )
 
-            if label == "real":
-                real_score = score
+        logits = outputs[0][0]
 
-            elif label == "fake":
-                fake_score = score
+        exp_logits = np.exp(logits - np.max(logits))
+        probabilities = exp_logits / np.sum(exp_logits)
+
+        fake_score = float(probabilities[0])
+        real_score = float(probabilities[1])
 
         if fake_score > real_score:
             prediction = "AI Generated"
